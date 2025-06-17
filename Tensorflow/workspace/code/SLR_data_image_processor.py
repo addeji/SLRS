@@ -28,7 +28,16 @@ def collect_and_process_images(base_images_path):
     print(f"Base images path: {base_images_path}")
 
 
-    custom_labels = ['accept', 'go', 'stop', 'hello', 'why_while', 'yes', 'welcome', 'iloveyou']
+    custom_labels = ['accept', 'go', 'stop', 'hello', 'why_while', 'yes','you', 'work', 'words',
+                     'will', 'who', 'white', 'where', 'when', 'what', 'welcome', 'we','watch', 'wash', 'want', 'walk',
+                     'wait', 'us', 'to', 'think', 'they', 'there', 'then', 'them','their', 'the', 'thank', 'tall','take',
+                     'sweet', 'sweat', 'surprise_amazing', 'speak', 'sorry','smell','slow', 'sleep', 'sign', 'show', 'she',
+                     'run', 'regular', 'red', 'please', 'pink', 'pass','out', 'on', 'of', 'night', 'nice to meet you', 'nice',
+                     'name', 'morning', 'mine_my', 'manage','low', 'love', 'laugh_smile', 'language', 'journey', 'it', 'is',
+                     'in', 'i_love_you', 'how','honor_adore', 'high', 'hide', 'here', 'her', 'hello', 'hear', 'he', 'hand',
+                     'grow', 'green', 'great','grace', 'good', 'get', 'form', 'firstly', 'enjoy', 'eat', 'drive', 'drink', 'day', 'cook', 'come',
+                     'color', 'call', 'but', 'brown', 'blue', 'black', 'big', 'beautiful', 'be', 'bath', 'back',
+                     'arrive', 'are', 'and', 'am', 'alphabet', 'afternoon', 'act_drama']
     labels = list(string.ascii_uppercase) + custom_labels
     labels.sort()
 
