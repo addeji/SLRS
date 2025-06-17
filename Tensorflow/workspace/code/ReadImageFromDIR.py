@@ -1,7 +1,9 @@
 import os
-import cv2 #  cv2 for reading and processing images
-import re # Import re for robust file checking
-import string # Import the string module to easily get alphabet characters
+import re
+import string
+
+import cv2  # cv2 for reading and processing images
+import numpy as np
 
 # Defines the base directory where images are located
 # This is the parent directory that contains subfolders for each label
@@ -9,12 +11,15 @@ BASE_IMAGES_PATH = 'C:/Users/adede/Documents/FYPPython/Tensorflow/workspace/imag
 
 
 # You can easily add more custom words to this list
-custom_labels = ['accept', 'go', 'stop', 'hello', 'thanks', 'yes', 'no', 'iloveyou']
+custom_labels = ['accept', 'go', 'stop', 'hello', 'why_while', 'yes', 'welcome', 'iloveyou']
 labels = list(string.ascii_uppercase) + custom_labels
 
 # line to only read images from the directories corresponding to these labels
 # Only files with these extensions will be processed as images.
 IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
+
+# Define the target size for resizing images
+TARGET_IMAGE_SIZE = (224, 224) # (width, height)
 
 # Iterate through each label
 for label in labels:
@@ -38,7 +43,7 @@ for label in labels:
     max_existing_number = 0
     files_to_rename = []
 
-    # Regex to match names like "A_123.png" or "accept_45.jpg"
+    # Regex to match names like "A_1.png" or "accept_5.jpg"
     # Group 1 captures the label, Group 2 captures the number
     desired_name_pattern = re.compile(rf"^{re.escape(label)}_(\d+)\.\w+$", re.IGNORECASE)
 
@@ -80,10 +85,13 @@ for label in labels:
 
     # --- Renaming Image Logic End ---
 
-    # List all files in the current label's directory
-    image_filenames = os.listdir(label_dir_path)
+    # --- Image Reading, Resizing, and Normalization Logic Start ---
+    # Now, read all images (including those just renamed)
+    # Re-list files in case renaming happened
+    processed_image_filenames = [f for f in os.listdir(label_dir_path)
+                                 if os.path.isfile(os.path.join(label_dir_path, f)) and f.lower().endswith(IMAGE_EXTENSIONS)]
 
-    for img_name in image_filenames:
+    for img_name in processed_image_filenames:
         # Constructs the full path to the image file
         image_path = os.path.join(label_dir_path, img_name)
 
@@ -97,10 +105,20 @@ for label in labels:
                 if img is None:
                     print(f"Could not read image: {image_path}. Skipping.")
                     continue
+                else:
 
-                # --- You can add your image processing/training code here ---
+                    # 1. Resizes the image
+                    resized_img = cv2.resize(img, TARGET_IMAGE_SIZE)
+
+                    # 2. Normalize the pixel values from 0-255 to 0.0-1.0
+                    # Convert image to float32 type before division for precise normalization
+                    normalized_img = resized_img.astype(np.float32) / 255.0
+
+
                 # displays the image in a window
-                cv2.imshow(f'Image for {label}', img)
+                    # So, we'll multiply by 255 to display, but for actual model input, use normalized_img
+                    display_img = (normalized_img * 255).astype(np.uint8)
+                    cv2.imshow(f'Processed Image for {label}: {img_name}', display_img)
 
                 # Waits for a key input to close the image window
                 # Press 'q' to quit
@@ -114,4 +132,4 @@ for label in labels:
         break
 
 cv2.destroyAllWindows()
-print("Finished reading images.")
+print("Finished reading,renaming, resizing, and normalizing images.")
