@@ -54,7 +54,7 @@ def collect_and_process_images(base_images_path):
     image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
 
     # Define the target size for resizing images
-    target_image_size = (64, 64) # (width, height) - Keeping it at 64x64 for memory efficiency
+    target_image_size = (128, 128) # (width, height) - Keeping it at 64x64 for memory efficiency
 
 
     # Lists to store our processed images and their corresponding numerical labels
