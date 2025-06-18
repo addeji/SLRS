@@ -187,20 +187,20 @@ def collect_and_process_images(base_images_path):
         return np.array([]), np.array([]), {}, {} # Return empty arrays/dicts
 
     # Convert lists to NumPy arrays
-    x = np.array(all_images)
+    X = np.array(all_images)
     y = np.array(all_numerical_labels)
 
     # Reshape X for CNN input (add channel dimension if missing, assuming color images here)
-    if len(x.shape) == 3: # If shape is (num_samples, height, width)
+    if len(X.shape) == 3: # If shape is (num_samples, height, width)
         # Assuming the images are color (height, width, 3). If they were grayscale (height, width),
         # this would add a channel dimension to make it (height, width, 1).
         # If your images are already (H, W, C), this line doesn't change anything, which is fine.
-        x = np.expand_dims(x, axis=-1) # Add channel dimension if it's implicitly 1 (grayscale)
+        x = np.expand_dims(X, axis=-1) # Add channel dimension if it's implicitly 1 (grayscale)
 
     print(f"Final collected data shape: X={x.shape}, y={y.shape}")
 
     # --- THIS IS THE FINAL RETURN OF THE FUNCTION ---
-    return x, y, label_to_numeric, numeric_to_label
+    return X, y, label_to_numeric, numeric_to_label
 
 # This block allows you to test this file independently, if needed
 if __name__ == "__main__":
