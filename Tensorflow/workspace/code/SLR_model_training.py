@@ -7,11 +7,12 @@ from tensorflow.keras.callbacks import ModelCheckpoint # Imports ModelCheckpoint
 # Imports the data collection and processing function
 from SLR_data_image_processor import collect_and_process_images
 
-def train_sign_language_model(base_images_path, model_save_name='sign_language_model.h5', epochs=10):
+def train_sign_language_model(base_images_path, model_save_name='sign_language_model.keras', epochs=100):
+    os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
     """
-    Collects processed image data and trains a CNN model for sign language recognition.
-    The batch size is dynamically determined based on the number of images.
-    Includes model checkpointing to save the best performing model during training.
+    collects processed image data and trains a CNN model for sign language recognition.
+    the batch size is dynamically determined based on the number of images.
+    includes model checkpointing to save the best performing model during training.
 
     Args:
         base_images_path (str): The base directory where image subfolders are located.
@@ -51,7 +52,7 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
     dynamic_batch_size = MIN_BATCH_SIZE # Starts with a minimum
 
     if total_images >= MIN_BATCH_SIZE:
-        # we'll aim for a batch size that is a power of 2 and roughly 5-10% of the total dataset,
+        # We'll aim for a batch size that is a power of 2 and roughly 5-10% of the total dataset,
         # but capped by MAX_BATCH_SIZE_CAP and at least MIN_BATCH_SIZE.
         # We'll consider batch sizes from 16, 32, 64, 128.
         if total_images >= 128:
@@ -63,14 +64,14 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
         else: # For very small datasets where total_images < 32
             dynamic_batch_size = MIN_BATCH_SIZE
 
-    # Ensures the dynamic_batch_size is within the practical range and is a power of 2
+    # Ensure the dynamic_batch_size is within the practical range and is a power of 2
     # This final adjustment ensures it's one of the preferred values [16, 32, 64, 128]
     if dynamic_batch_size > MAX_BATCH_SIZE_CAP:
         dynamic_batch_size = MAX_BATCH_SIZE_CAP
     if dynamic_batch_size < MIN_BATCH_SIZE:
         dynamic_batch_size = MIN_BATCH_SIZE
 
-    # If the calculated batch size is not a power of 2 (due to min/max caps), force it to nearest power of 2 below it
+    # If the calculated batch size is not a power of 2 (due to min/max caps), force it to the nearest power of 2 below it
     dynamic_batch_size = floor_power_of_2(dynamic_batch_size)
 
 
@@ -85,6 +86,7 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
 
     # Build the CNN Model
     model = tf.keras.models.Sequential([
+        tf.keras.layers.InputLayer(input_shape=input_shape),
         tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
         tf.keras.layers.MaxPooling2D((2, 2)),
 
@@ -107,7 +109,7 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 
-    # Display model summary
+    # Displays model summary
     model.summary()
 
     # --- Setup Model Checkpointing ---
@@ -122,7 +124,7 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
     # Create the ModelCheckpoint callback
     # monitor='val_accuracy': save based on validation accuracy
     # save_best_only=True: only save the model when validation accuracy improves
-    # mode='max': because we want to maximize validation accuracy
+    # mode ='max': because we want to maximize validation accuracy
     # verbose=1: to see messages when a model is saved
     model_checkpoint_callback = ModelCheckpoint(
         filepath=checkpoint_filepath,
@@ -163,6 +165,6 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
 
 # This ensures the training process runs when the file is executed directly
 if __name__ == "__main__":
-    # IMPORTANT: Adjust this path to the absolute path where your 'collectedimages' folder is located
+    # IMPORTANT: Adjust this path to the absolute path where your 'collected images' folder is located
     TRAINING_DATA_BASE_PATH = 'C:/Users/adede/Documents/FYPPython/Tensorflow/workspace/images/collectedimages'
-    train_sign_language_model(TRAINING_DATA_BASE_PATH, epochs=20)
+    train_sign_language_model(TRAINING_DATA_BASE_PATH, epochs=100)

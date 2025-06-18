@@ -27,26 +27,26 @@ def collect_and_process_images(base_images_path):
         sys.exit(1) # Exit the script if the base path is invalid
     print(f"Base images path: {base_images_path}")
 
+    # --- FIX RE-APPLIED: Dynamically collect labels from subdirectories ---
+    # Get all subdirectory names within BASE_IMAGES_PATH
+    actual_folder_labels = [name for name in os.listdir(base_images_path)
+                            if os.path.isdir(os.path.join(base_images_path, name))]
 
-    custom_labels = ['accept', 'go', 'stop', 'hello', 'why_while', 'yes','you', 'work', 'words',
-                     'will', 'who', 'white', 'where', 'when', 'what', 'welcome', 'we','watch', 'wash', 'want', 'walk',
-                     'wait', 'us', 'to', 'think', 'they', 'there', 'then', 'them','their', 'the', 'thank', 'tall','take',
-                     'sweet', 'sweat', 'surprise_amazing', 'speak', 'sorry','smell','slow', 'sleep', 'sign', 'show', 'she',
-                     'run', 'regular', 'red', 'please', 'pink', 'pass','out', 'on', 'of', 'night', 'nice to meet you', 'nice',
-                     'name', 'morning', 'mine_my', 'manage','low', 'love', 'laugh_smile', 'language', 'journey', 'it', 'is',
-                     'in', 'i_love_you', 'how','honor_adore', 'high', 'hide', 'here', 'her', 'hello', 'hear', 'he', 'hand',
-                     'grow', 'green', 'great','grace', 'good', 'get', 'form', 'firstly', 'enjoy', 'eat', 'drive', 'drink', 'day', 'cook', 'come',
-                     'color', 'call', 'but', 'brown', 'blue', 'black', 'big', 'beautiful', 'be', 'bath', 'back',
-                     'arrive', 'are', 'and', 'am', 'alphabet', 'afternoon', 'act_drama']
-    labels = list(string.ascii_uppercase) + custom_labels
-    labels.sort()
+    # Use all detected folder names as labels and sort them for consistent numerical mapping
+    labels = sorted(actual_folder_labels)
+
+    # Check if there are any labels after collection
+    if not labels:
+        print("Error: No label directories found in the base path. Cannot proceed.")
+        return np.array([]), np.array([]), {}, {}
 
     # Create a mapping from string label to numerical index
     # This is crucial for training a classification model
-
     label_to_numeric = {label: i for i, label in enumerate(labels)}
     numeric_to_label = {i: label for i, label in enumerate(labels)}
-    num_classes = len(labels) # This variable is used later in the trainer
+    num_classes = len(labels) # This will now reflect the actual number of folders
+
+    print(f"Detected {num_classes} unique labels/classes dynamically from directories.")
 
 
     # line to only read images from the directories corresponding to these labels
@@ -54,7 +54,7 @@ def collect_and_process_images(base_images_path):
     image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
 
     # Define the target size for resizing images
-    target_image_size = (224, 224) # (width, height)
+    target_image_size = (64, 64) # (width, height) - Keeping it at 64x64 for memory efficiency
 
 
     # Lists to store our processed images and their corresponding numerical labels
@@ -68,7 +68,7 @@ def collect_and_process_images(base_images_path):
         # Construct the full path to the directory for the current label
         label_dir_path = os.path.join(base_images_path, label)
 
-        # Check if the directory exists
+        # Check if the directory exists (should always exist now, as labels come from existing dirs)
         if not os.path.exists(label_dir_path):
             print(f"Warning: Directory '{label_dir_path}' not found. Skipping label '{label}'.")
             continue
@@ -158,25 +158,9 @@ def collect_and_process_images(base_images_path):
                         all_images.append(normalized_img)
                         all_numerical_labels.append(label_to_numeric[label])
 
-                    # displays the image in a window (Commented out for headless processing)
-                    #this was removed to increase performance and avoid blocking the loop
-                    # display_img = (normalized_img * 255).astype(np.uint8)
-                    # cv2.imshow(f'Processed Image for {label}: {img_name}', display_img)
-
-                    # Waits for a key input to close the image window (Commented out for headless processing)
-                    # Press 'q' to quit
-                    # key = cv2.waitKey(1)
-                    # if key & 0xFF == ord('q'):
-                    #     print("User interrupted. Exiting.")
-                    #     cv2.destroyAllWindows()
-                    #     sys.exit()
-
                 except Exception as e:
                     print(f"Error processing image {image_path}: {e}")
             # If it's not a file or not an image (based on extension), we skip it.
-        # This part of the code for exiting via 'q' was moved outside the function to the trainer if needed
-        # if cv2.waitKey(1) & 0xFF == ord('q'):
-        #     break # This break needs a flag to exit outer loop if re-enabled
 
     cv2.destroyAllWindows() # Ensure any leftover windows are closed
     print("\n--- Image Preprocessing and Collection Complete ---")
@@ -184,20 +168,24 @@ def collect_and_process_images(base_images_path):
 
     if not all_images:
         print("No images were collected. Returning empty data.")
-        return np.array([]), np.array([]), {}, {} # Return empty arrays/dicts
+        # Return empty arrays/dicts if no images are collected
+        return np.array([]), np.array([]), {}, {}
 
     # Convert lists to NumPy arrays
     X = np.array(all_images)
     y = np.array(all_numerical_labels)
 
     # Reshape X for CNN input (add channel dimension if missing, assuming color images here)
-    if len(X.shape) == 3: # If shape is (num_samples, height, width)
-        # Assuming the images are color (height, width, 3). If they were grayscale (height, width),
-        # this would add a channel dimension to make it (height, width, 1).
-        # If your images are already (H, W, C), this line doesn't change anything, which is fine.
-        x = np.expand_dims(X, axis=-1) # Add channel dimension if it's implicitly 1 (grayscale)
+    if len(X.shape) == 3: # If shape is (num_samples, height, width) (meaning it's grayscale without channel dim)
+        # Check if the last dimension is missing or is not 3 (color image) or 1 (grayscale).
+        # This prevents adding an extra dimension if it's already (H, W, C) where C is 3.
+        # cv2.imread usually returns (H, W, 3) for color or (H, W) for grayscale.
+        # If it returns (H, W), we need to expand to (H, W, 1).
+        if X.shape[-1] != 3: # If the last dimension is not 3, assume it's grayscale (H, W) and expand
+            X = np.expand_dims(X, axis=-1) # Corrected assignment to 'X'
 
-    print(f"Final collected data shape: X={x.shape}, y={y.shape}")
+    # This print statement is now correctly placed after X and y are guaranteed to be assigned
+    print(f"Final collected data shape: X={X.shape}, y={y.shape}")
 
     # --- THIS IS THE FINAL RETURN OF THE FUNCTION ---
     return X, y, label_to_numeric, numeric_to_label
