@@ -7,7 +7,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint # Imports ModelCheckpoint
 # Imports the data collection and processing function
 from SLR_data_image_processor import collect_and_process_images
 
-def train_sign_language_model(base_images_path, model_save_name='sign_language_model.keras', epochs=100):
+def train_sign_language_model(base_images_path, model_save_name='sign_language_model.keras', epochs=150):
     os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
     """
     collects processed image data and trains a CNN model for sign language recognition.
@@ -167,4 +167,4 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
 if __name__ == "__main__":
     # IMPORTANT: Adjust this path to the absolute path where your 'collected images' folder is located
     TRAINING_DATA_BASE_PATH = 'C:/Users/adede/Documents/FYPPython/Tensorflow/workspace/images/collectedimages'
-    train_sign_language_model(TRAINING_DATA_BASE_PATH, epochs=100)
+    train_sign_language_model(TRAINING_DATA_BASE_PATH, epochs=150)
