@@ -154,6 +154,7 @@ def train_sign_language_model(base_images_path, model_save_name='sign_language_m
     except Exception as e:
         print(f"Error saving final model: {e}")
 
+
     print("\n--- Model Training Pipeline Complete ---")
     print(f"The best performing models are saved in the '{checkpoint_dir}' directory.")
     print(f"The final model (last epoch) is saved at: {os.path.abspath(model_save_name)}")
