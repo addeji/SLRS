@@ -1,33 +1,34 @@
 import os
 import cv2
-import string
 import re
 import numpy as np
-import sys # Import sys for potential graceful exit if re-enabling imshow
+import sys
+import mediapipe as mp # Import MediaPipe for hand detection
 
 def collect_and_process_images(base_images_path):
     """
-    Performs image preprocessing and data collection.
+    Performs image preprocessing and data collection, including MediaPipe hand
+    detection and cropping, for training a sign language recognition model.
+    Images are returned with pixel values in the [0, 255] range (as float32),
+    as normalization to [-1, 1] will be handled by the MobileNetV2 preprocessing layer in the trainer.
 
     Args:
         base_images_path (str): The base directory where image subfolders are located.
 
     Returns:
         tuple: A tuple containing:
-            - X (np.array): NumPy array of processed images.
+            - X (np.array): NumPy array of processed (cropped and resized) images.
             - y (np.array): NumPy array of corresponding numerical labels.
             - label_to_numeric (dict): Mapping from string labels to numerical indices.
             - numeric_to_label (dict): Mapping from numerical indices to string labels.
     """
-    # Check if the base_images_path existed
-    # Defines the base directory where images are located
-    # This is the parent directory that contains subfolders for each label
+    # Check if the base_images_path exists
     if not os.path.exists(base_images_path):
         print(f"Error: The base directory '{base_images_path}' does not exist.")
         sys.exit(1) # Exit the script if the base path is invalid
     print(f"Base images path: {base_images_path}")
 
-    # --- FIX RE-APPLIED: Dynamically collect labels from subdirectories ---
+    # --- Dynamically collect labels from subdirectories ---
     # Get all subdirectory names within BASE_IMAGES_PATH
     actual_folder_labels = [name for name in os.listdir(base_images_path)
                             if os.path.isdir(os.path.join(base_images_path, name))]
@@ -35,33 +36,37 @@ def collect_and_process_images(base_images_path):
     # Use all detected folder names as labels and sort them for consistent numerical mapping
     labels = sorted(actual_folder_labels)
 
-    # Check if there are any labels after collection
+    # Check if any labels were found
     if not labels:
         print("Error: No label directories found in the base path. Cannot proceed.")
         return np.array([]), np.array([]), {}, {}
 
     # Create a mapping from string label to numerical index
-    # This is crucial for training a classification model
     label_to_numeric = {label: i for i, label in enumerate(labels)}
     numeric_to_label = {i: label for i, label in enumerate(labels)}
     num_classes = len(labels) # This will now reflect the actual number of folders
 
     print(f"Detected {num_classes} unique labels/classes dynamically from directories.")
 
-
-    # line to only read images from the directories corresponding to these labels
-    # Only files with these extensions will be processed as images.
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
+    # Define a list of common image file extensions
+    IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
 
     # Define the target size for resizing images
-    target_image_size = (64, 64) # (width, height) - Keeping it at 64x64 for memory efficiency
-
+    TARGET_IMAGE_SIZE = (64, 64) # (width, height) - Consistent with detector for training
 
     # Lists to store our processed images and their corresponding numerical labels
     all_images = []
     all_numerical_labels = []
 
-    print("\n--- Starting Image Preprocessing and Collection ---")
+    print("\n--- Starting Image Preprocessing and Collection (with MediaPipe Hand Cropping) ---")
+
+    # Initialize MediaPipe Hands for processing static training images
+    mp_hands = mp.solutions.hands
+    hands = mp_hands.Hands(
+        static_image_mode=True, # Set to True for processing static images from disk
+        max_num_hands=2,         # Detect a single hand
+        min_detection_confidence=0.6
+    )
 
     # Iterate through each label
     for label in labels:
@@ -73,37 +78,27 @@ def collect_and_process_images(base_images_path):
             print(f"Warning: Directory '{label_dir_path}' not found. Skipping label '{label}'.")
             continue
 
-        print(f"Reading images for label: {label} from {label_dir_path}")
+        print(f"Processing images for label: {label} from {label_dir_path}")
 
         # --- Renaming Logic Start ---
-        # first we'll go through and rename files that don't match the desired pattern.
-
-        # Gets all current image files in the directory
         current_image_files = [f for f in os.listdir(label_dir_path)
-                               if os.path.isfile(os.path.join(label_dir_path, f)) and f.lower().endswith(image_extensions)]
+                               if os.path.isfile(os.path.join(label_dir_path, f)) and f.lower().endswith(IMAGE_EXTENSIONS)]
 
         max_existing_number = 0
         files_to_rename = []
-
-        # Regex to match names like "A_1.png" or "accept_5.jpg"
-        # Group 1 captures the label, Group 2 captures the number
         desired_name_pattern = re.compile(rf"^{re.escape(label)}_(\d+)\.\w+$", re.IGNORECASE)
 
         for img_name in current_image_files:
             match = desired_name_pattern.match(img_name)
             if match:
-                # If it matches the desired pattern, update max_existing_number
                 num = int(match.group(1))
                 if num > max_existing_number:
                     max_existing_number = num
             else:
-                # If it doesn't match, add it to the list for renaming
                 files_to_rename.append(img_name)
 
-        # Start numbering new files from max_existing_number + 1
         rename_counter = max_existing_number + 1
 
-        # Perform the renaming for files that need it
         if files_to_rename:
             print(f"  Renaming {len(files_to_rename)} files in '{label_dir_path}'...")
             for old_img_name in files_to_rename:
@@ -113,7 +108,6 @@ def collect_and_process_images(base_images_path):
                 old_image_path = os.path.join(label_dir_path, old_img_name)
                 new_image_path = os.path.join(label_dir_path, new_img_name)
 
-                # Check if the new name already exists (highly unlikely with sequential counter)
                 if not os.path.exists(new_image_path):
                     try:
                         os.rename(old_image_path, new_image_path)
@@ -123,79 +117,101 @@ def collect_and_process_images(base_images_path):
                         print(f"    Error renaming '{old_img_name}': {e}")
                 else:
                     print(f"    Skipping rename for '{old_img_name}': '{new_img_name}' already exists.")
-                    rename_counter += 1 # Still increment to avoid future clashes
+                    rename_counter += 1
 
         # --- Renaming Image Logic End ---
 
-        # --- Image Reading, Resizing, and Normalization Logic Start ---
-        # Now, read all images (including those just renamed)
+        # --- Image Reading, MediaPipe Cropping, Resizing Logic Start ---
         # Re-list files in case renaming happened
         processed_image_filenames = [f for f in os.listdir(label_dir_path)
-                                     if os.path.isfile(os.path.join(label_dir_path, f)) and f.lower().endswith(image_extensions)]
+                                     if os.path.isfile(os.path.join(label_dir_path, f)) and f.lower().endswith(IMAGE_EXTENSIONS)]
 
         for img_name in processed_image_filenames:
-            # Constructs the full path to the image file
             image_path = os.path.join(label_dir_path, img_name)
 
-            # Checks if it's a file AND if its extension is in our list of IMAGE_EXTENSIONS
-            if os.path.isfile(image_path) and img_name.lower().endswith(image_extensions):
-                try:
-                    # Reads the image using OpenCV
-                    img = cv2.imread(image_path)
+            try:
+                img = cv2.imread(image_path)
 
-                    # Checks if the image was loaded successfully
-                    if img is None:
-                        print(f"Could not read image: {image_path}. Skipping.")
-                        continue
+                if img is None:
+                    print(f"Could not read image: {image_path}. Skipping.")
+                    continue
+                else:
+                    # Convert BGR to RGB for MediaPipe processing
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    results = hands.process(img_rgb) # Process image with MediaPipe
+
+                    # Only process if a hand is detected
+                    if results.multi_hand_landmarks:
+                        # Assuming only one hand per image for sign language
+                        for hand_landmarks in results.multi_hand_landmarks:
+                            # Get bounding box coordinates for the hand from landmarks
+                            h, w, _ = img.shape # Use the dimensions of the original image
+                            x_coords = [landmark.x for landmark in hand_landmarks.landmark]
+                            y_coords = [landmark.y for landmark in hand_landmarks.landmark]
+
+                            x_min = int(min(x_coords) * w)
+                            y_min = int(min(y_coords) * h)
+                            x_max = int(max(x_coords) * w)
+                            y_max = int(max(y_coords) * h)
+
+                            # Add padding to the bounding box to ensure full hand is captured
+                            padding_px = 30 # Consistent with detector's padding
+                            x_min = max(0, x_min - padding_px)
+                            y_min = max(0, y_min - padding_px)
+                            x_max = min(w, x_max + padding_px)
+                            y_max = min(h, y_max + padding_px)
+
+                            # Crop the hand region from the original image
+                            cropped_hand = img[y_min:y_max, x_min:x_max]
+
+                            # Check if crop resulted in an empty image (e.g., if bounding box invalid)
+                            if cropped_hand.size == 0:
+                                print(f"Warning: Cropped hand region is empty for {image_path}. Skipping.")
+                                continue
+
+                            # Resize the cropped hand to the target size
+                            resized_img = cv2.resize(cropped_hand, TARGET_IMAGE_SIZE)
+                            # The MobileNetV2 preprocessing layer in the trainer expects [0, 255] values.
+                            processed_img_for_trainer = resized_img.astype(np.float32)
+
+                            # Append the processed image and its numerical label
+                            all_images.append(processed_img_for_trainer)
+                            all_numerical_labels.append(label_to_numeric[label])
                     else:
-                        # 1. Resizes the image
-                        resized_img = cv2.resize(img, target_image_size)
-                        # 2. Normalize the pixel values from 0-255 to 0.0-1.0
-                        # Convert image to float32 type before division for precise normalization
-                        normalized_img = resized_img.astype(np.float32) / 255.0
+                        print(f"Warning: No hand detected in image {image_path}. Skipping for training.")
+                        continue # Skip images where no hand is detected by MediaPipe
 
-                        #Appends the processed image and its corresponding numerical label to the lists
-                        all_images.append(normalized_img)
-                        all_numerical_labels.append(label_to_numeric[label])
+            except Exception as e:
+                print(f"Error processing image {image_path}: {e}")
 
-                except Exception as e:
-                    print(f"Error processing image {image_path}: {e}")
-            # If it's not a file or not an image (based on extension), we skip it.
-
-    cv2.destroyAllWindows() # Ensure any leftover windows are closed
+    cv2.destroyAllWindows() # Ensure any leftover OpenCV windows are closed
+    hands.close() # Release MediaPipe resources
     print("\n--- Image Preprocessing and Collection Complete ---")
     print(f"Collected {len(all_images)} images.")
 
     if not all_images:
         print("No images were collected. Returning empty data.")
-        # Return empty arrays/dicts if no images are collected
         return np.array([]), np.array([]), {}, {}
 
     # Convert lists to NumPy arrays
     X = np.array(all_images)
     y = np.array(all_numerical_labels)
 
-    # Reshape X for CNN input (add channel dimension if missing, assuming color images here)
-    if len(X.shape) == 3: # If shape is (num_samples, height, width) (meaning it's grayscale without channel dim)
-        # Check if the last dimension is missing or is not 3 (color image) or 1 (grayscale).
-        # This prevents adding an extra dimension if it's already (H, W, C) where C is 3.
-        # cv2.imread usually returns (H, W, 3) for color or (H, W) for grayscale.
-        # If it returns (H, W), we need to expand to (H, W, 1).
-        if X.shape[-1] != 3: # If the last dimension is not 3, assume it's grayscale (H, W) and expand
-            X = np.expand_dims(X, axis=-1) # Corrected assignment to 'X'
+    # Ensure X has 3 channels if it's grayscale (H, W) or (H, W, 1)
+    # MediaPipe operates on color (3 channels), so `img` from `cv2.imread` is usually (H, W, 3).
+    # If it somehow becomes (H, W), we add a channel.
+    if len(X.shape) == 3: # This means it's (num_samples, H, W)
+        X = np.expand_dims(X, axis=-1) # Add channel dimension to make it (num_samples, H, W, 1)
+    elif X.shape[-1] == 1: # If it's (num_samples, H, W, 1), convert to (num_samples, H, W, 3) for MobileNetV2
+        X = np.repeat(X, 3, axis=-1)
 
-    # This print statement is now correctly placed after X and y are guaranteed to be assigned
     print(f"Final collected data shape: X={X.shape}, y={y.shape}")
 
     # --- THIS IS THE FINAL RETURN OF THE FUNCTION ---
     return X, y, label_to_numeric, numeric_to_label
 
-# This block allows you to test this file independently, if needed
 if __name__ == "__main__":
-    # IMPORTANT: Adjust this path to the absolute path on your system for testing
-    BASE_IMAGES_PATH = 'C:/Users/adede/Documents/FYPPython/Tensorflow/workspace/images/collectedimages'
-    # Or for a more robust setup, you might pass it as an argument or from a config
-
+    BASE_IMAGES_PATH = 'C:/Users/adede/Documents/FYPPython/Tensorflow/workspace/images/myimages'
     X_data, y_data, l_to_n, n_to_l = collect_and_process_images(BASE_IMAGES_PATH)
 
     print("\n--- Data collected from sign_language_data_processor.py (for testing) ---")
